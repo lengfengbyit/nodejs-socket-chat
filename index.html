@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>chat</title>
+    <style type="text/css">
+        #content{
+            width: 500px;
+            height: 300px;
+            border: 1px solid #eee;
+        }
+        #input{
+            width: 500px;
+            height: auto;
+            display: flex;
+        }
+        #input input[type=text]{
+            flex-grow: 4;
+        }
+        #input input[type=button]{
+            flex-grow: 1;
+        }
+        ul{
+            list-style: none;
+            padding-left: 10px;
+        }
+        .fl{
+            float: left;
+        }
+        #userList{
+            width: 200px;
+        }
+        .green {
+            color: green;
+        }
+        .red {
+            color: red;
+        }
+        #content p{
+            margin: 2px;
+        }
+    </style>
+</head>
+<body onbeforeunload="checkLeave()">
+<div id="app">
+    <div id="loginPage" v-if="!chatPage_show">
+        昵称：<input type="text" name="username" v-model="user.username" @keyup.enter="login">
+        <input type="button" value="提交" @click="login">
+    </div>
+    <div id="chatPage" v-if="chatPage_show">
+        <div id="userList" class="fl">
+            <h5>在线用户列表({{onlineCount}})</h5>
+            <ul>
+                <li v-for="(username,userid) in onlineUsers" 
+                :class="usernameClass(userid)" @click="selectUser(userid)">
+                    <template v-if="toUserId == userid">@</template>
+                    {{username}}
+                </li>
+            </ul>
+        </div>
+        <div class="fl">
+            <div id="content">
+                <ul>
+                    <li v-for="item in msgList">
+                        <p :class="item.class">
+                            <strong v-if="item.user">
+                                [{{item.user.username}}]
+                                <small>[{{item.msg_type}}]</small>:
+                            </strong>
+                            {{item.msg}}
+                        </p>
+                    </li>
+                </ul>
+            </div>
+            <div id="input">
+                <input type="text" name="" id="" v-model="currmsg" @keyup.enter="sendMsg">
+                <input type="button" value="提交" @click="sendMsg">
+            </div>
+        </div>
+    </div>
+</div>
+<script type="text/javascript" src="socket.io.min.js"></script>
+<script type="text/javascript" src="vue.min.js"></script>
+<script>
+
+    var app = new Vue({
+        el : '#app',
+        data : {
+            onlineUsers : {},
+            onlineCount : 0,
+            msgList : [],
+            currmsg : '',//当前用户发送的最后一条消息
+            user : {
+                userid : 0,
+                username : '',
+            },
+            scoket : null,
+            chatPage_show : false,
+            toUserId : 0
+        },
+        methods : {
+            usernameClass : function(val){
+
+                return val == this.user.userid ? 'red' : 'green';
+            },
+            getUserid : function(){
+
+                return new Date().getTime()+""+Math.floor(Math.random()*899+100);
+            },
+            login : function(){
+                if(this.user.username == ''){
+                    alert('请输入昵称');return;
+                }
+                this.chatPage_show = true;
+                this.user.userid = this.getUserid();
+                this.init();
+            },
+            logout : function(){
+
+                this.scoket.emit('logout',this.user);
+            },
+            sendMsg : function(){
+
+                var obj = {
+                    user : this.user,
+                    msg : this.currmsg,
+                    toUserId : this.toUserId
+                };
+                this.scoket.emit('msg',obj);
+                this.currmsg = '';
+            },
+            updateUser : function(res){
+
+                this.onlineUsers = res.onlineUsers;
+                this.onlineCount = res.onlineCount;
+                
+                this.showMsg({msg : res.msg,'class' : 'green'});
+            },
+            showMsg : function(msg){
+
+                this.msgList.push(msg);
+            },
+            selectUser : function(userid){
+
+                if(userid != '' && userid != this.user.userid){
+
+                    this.toUserId = userid;
+                }else{
+
+                    this.toUserId = 0;
+                }
+            },
+            init : function(){
+
+                //链接服务器
+                this.scoket = io.connect('http://localhost:3000');
+
+                this.scoket.emit('login',this.user);
+
+                this.scoket.on('login',function(res){
+
+                    app.updateUser(res);
+                });
+
+                this.scoket.on('logout',function(res){
+
+                    app.updateUser(res);
+                });
+
+                this.scoket.on('msg',function(res){
+
+                    var isme = res.user.userid == app.user.userid ? true : false;
+
+                    if(isme){
+                       res.user.username = '我';
+                       res.class = 'red';
+                    }else{
+                        res.class = 'green';
+                    }
+
+                    if(res.toUserId){
+                        res.msg_type = '私';
+                    }else{
+                        res.msg_type = '公';
+                    }
+
+                    app.showMsg(res);
+                })
+            }
+        }
+    })
+
+    //离开页面，用户退出登录
+    function checkLeave(){
+
+        app.logout();
+    }
+</script>
+</body>
+</html>
